@@ -1,1 +1,5 @@
 *.env/
+*ejemplos/
+*.db
+ej.py
+
