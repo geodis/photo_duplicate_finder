@@ -4,6 +4,13 @@ import pathlib
 import etcd
 import sqlite3
 import threading
+import concurrent.futures
+
+DEBUG = True
+
+def message(message, *args):
+  if DEBUG:
+    print(message)
 
 def hash_of(file):
   """
@@ -37,7 +44,7 @@ def store_sqlite(info_files):
         size TEXT NOT NULL);'''
 
     conn.execute(fotos_table)
-    print("creo la tabla")
+    message("creo la tabla")
     conn.close()
 
   def connect():
@@ -53,14 +60,14 @@ def store_sqlite(info_files):
       values (?, ?, ?, ?)"""
 
     for info_file in info_files:
-      print("insert")
+      message("insert")
       client.execute(insert, tuple(info_file.values()))
     client.commit()
 
   client = connect()
   insert()
   
-def hash_file(filename, base_path):
+def metadata_file(filename, base_path):
 
   file_data = {}
   file_absolute_path = base_path + "/" + filename 
@@ -82,9 +89,12 @@ def search_in(path):
   for base_path, _, files in os.walk(path):
     
     for filename in files:
+      if DEBUG:
+        message("Analizando [ %s ] --> %s" % (threading.current_thread(),filename))
+
       if any( x in filename for x in [".jpg", ".JPG"]):
         # hasheo solo los jpg
-        info_files.append(hash_file(filename, base_path))
+        info_files.append(metadata_file(filename, base_path))
 
   return info_files
 
@@ -95,25 +105,34 @@ def store_etcd(hash, size, filename, base_path, client):
   print(key)
   client.write(key, base_path)
 """
+def start_thread(thread_executor, contador, arg):
+
+  message("thread N:%s %s" % (contador, threading.current_thread()))
+  thread_executor.submit(init, arg)
+  # pass
+
+def init(base_path):
+  info_files = []
+  info_files = search_in(base_path)
+  # Guardo la info de los files en la BD
+  store_sqlite(info_files)
 
 def main():
   
   # etcd_client = etcd.Client(host='127.0.0.1', port=4001)
 
-  scan_paths = ["/home/chris/src/python/photo_duplicate_finder/ejemplos"]
+  # scan_paths = ['/media/chris/Elements/huawei', '/media/chris/Elements/Fotos']
+  scan_paths = ['/home/chris/src/python/photo_duplicate_finder/ejemplos']
   files = []
 
-  for base_path in scan_paths:
 
-    info_files = []
-    # Busco fotos en los paths
-    # TODO: multithreading
-    info_files = search_in(base_path)
-    # Guardo la info de los files en la BD
-    store_sqlite(info_files)
-
-    #  
+  with concurrent.futures.ThreadPoolExecutor() as thread_executor:
+    
+    contador = 0
+    while scan_paths:
+      # lanzar thread
+      start_thread(thread_executor, contador, scan_paths.pop() )
+      contador += 1
 
 if __name__ == '__main__':
   main()
-
